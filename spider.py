@@ -9,7 +9,12 @@ import os
 import shutil
 import json
 
-logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p',filename='example.log',level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(message)s',
+ datefmt='%m/%d/%Y %I:%M:%S %p',level=logging.DEBUG,
+ handlers={
+    'file': "exmple.log",
+    'encoding': 'utf-8'
+ })
 
 baseUrl = 'https://www.tujidao.com/'
 cookie = '7Dw1Tw3Bh2Mvfr=; UM_distinctid=173f0c5bc3717e-09b6cf2e7e2015-3972095d-1fa400-173f0c5bc38b44; 7Dw1Tw3Bh2Mvu%5Fleixing=3; 7Dw1Tw3Bh2Mvu%5Fpw=84f05029abccc09a; 7Dw1Tw3Bh2Mvu%5Fusername=asdf0823; 7Dw1Tw3Bh2Mvu%5Fid=229195; ASPSESSIONIDCWDQSQRQ=DHMOPECDLLEHFEBKIGHCBHKI; CNZZDATA1257039673=454938172-1597469558-%7C1597474969'
