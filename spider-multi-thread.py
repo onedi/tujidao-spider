@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from io import BytesIO
 import re
 import logging
+import logging.config
 import os
 import shutil
 import json
@@ -12,13 +13,31 @@ import threading
 import concurrent.futures
 import urllib3
 from datetime import datetime
+import yaml
+
+def setup_logging(default_path= "logging.yaml",default_level=logging.INFO,env_key='LOG_CFG'):
+    path = default_path
+    value = os.getenv(env_key,None)
+    if value:
+        path = value
+    if os.path.exists(path):
+        with open(path,'rt') as f:
+            config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p',filename='example.log',level=default_level)
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p',filename='example.log',level=logging.DEBUG)
+setup_logging()
+
 
 baseUrl = 'https://www.tujidao.com'
-cookie = '7Dw1Tw3Bh2Mvfr=; UM_distinctid=173f0c5bc3717e-09b6cf2e7e2015-3972095d-1fa400-173f0c5bc38b44; 7Dw1Tw3Bh2Mvu%5Fleixing=3; 7Dw1Tw3Bh2Mvu%5Fpw=84f05029abccc09a; 7Dw1Tw3Bh2Mvu%5Fusername=asdf0823; 7Dw1Tw3Bh2Mvu%5Fid=229195; ASPSESSIONIDCWDQSQRQ=DHMOPECDLLEHFEBKIGHCBHKI; CNZZDATA1257039673=454938172-1597469558-%7C1597474969'
+# 图片服务器可能会变，注意修改
+imageBaseUrl ='https://tjg.hywly.com'
+# cookie需要更换
+cookie = 'UM_distinctid=173f22431d31bb-0a0968750c153c-4353760-144000-173f22431d4891; PHPSESSID=v8646ekn4r8priddvpcbgfbpbs; uid=229195; name=asdf0823; leixing=3; CNZZDATA1257039673=1863654260-1597491733-%7C1611060386'
 headers = {
     'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:79.0) Gecko/20100101 Firefox/79.0',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -29,7 +48,7 @@ headers = {
 }
 
 imageHeaders = {
-'Host': 'lns.hywly.com',
+'Host': 'tjg.hywly.com',
 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:79.0) Gecko/20100101 Firefox/79.0',
 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
 'Accept-Language': 'zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2',
@@ -62,25 +81,22 @@ def start():
                 extractTag(tag)
             except Exception as e:
                 logging.error(e)    
-                logging.info('step over this error and continue')
+                logging.debug('step over this error and continue')
                 continue
 
 def extractTag(tag):
     '''
     提取标签
     '''
-    logging.info('==============extractTag=============')
     tagUrl = tag['url']
-    logging.info("extractTag:%s",tagUrl)
-    logging.info('tagName:%s',tag['name'])
-    # 标签文件夹
-    tagDir = '{imagesDir}/{tagName}-{type}-{id}'.format(imagesDir=imagesDir, tagName=tag['name'],type=tag['type'],id=tag['tagId']) 
-    logging.info('tagDir:%s',tagDir)
-    if not os.path.exists(tagDir):
-        os.makedirs(tagDir)
     if(not(tagUrl.startswith('http') or tagUrl.startswith('https'))):
         tagUrl = baseUrl + tagUrl
-    logging.info('tagUrl:%s',tagUrl)
+    logging.info("extract tag: %s,url:%s" ,tag['name'],tagUrl)
+    # 标签文件夹
+    tagDir = '{imagesDir}/{tagName}-{type}-{id}'.format(imagesDir=imagesDir, tagName=tag['name'],type=tag['type'],id=tag['tagId']) 
+    logging.info('tag save dir:%s',tagDir)
+    if not os.path.exists(tagDir):
+        os.makedirs(tagDir)
     # 获取tag
     r = requests.get(tagUrl, verify=False, headers=headers)
     soup = BeautifulSoup(r.text, 'lxml')
@@ -89,7 +105,7 @@ def extractTag(tag):
     with concurrent.futures.ThreadPoolExecutor(len(albums4Tag)) as executor:
         for album in albums4Tag:
             executor.submit(extractAlbum,album,tagDir)
-    logging.info('extractTag %s completed',tag)
+    logging.info('extract tag %s completed!',tag)
 
 def extractAlbum(album,tagDir):
     '''提取相册
@@ -97,7 +113,6 @@ def extractAlbum(album,tagDir):
     album: 相册名
     tagDir: 标签对应的目录
     '''
-    logging.info('>>>>>>>>>>thread-%s extractAlbum>>>>>>>>>',threading.current_thread.__name__)
     try:
         # 标题
         biaoti = album.select_one('.biaoti')
@@ -113,6 +128,8 @@ def extractAlbum(album,tagDir):
         title = biaoti.a.text
         url = biaoti.a['href']
         #id
+        logging.info('thread-%s extract album:%s,url:%s',threading.current_thread.__name__,title,url)
+
         r = re.search(r'id=(?P<id>\d+)',url)
         albumId = r.groupdict()['id']
         count = int(count.text[:-1])
@@ -125,11 +142,8 @@ def extractAlbum(album,tagDir):
         else:    
             figureUrl = figure['href'],
             figure = figure.text
-        logging.info('===========album=============')
-        logging.info('title:%s',title)
-        logging.info('url:%s',url)
-        logging.info('count:%s',count)
-        logging.info('figure:%s',figure)
+        logging.debug('title:%s,url:%s,count:%s,figure:%s',title,url,count,figure)
+        
         albumInfo = {
             'id':albumId,
             'title': title,
@@ -142,30 +156,13 @@ def extractAlbum(album,tagDir):
             'figureUrl':figureUrl,
         }
         albums.append(albumInfo)
-        albumName  = '{title}-{figure}-{count}'.format(title=title,figure=figure,count=count)
-        dir = '{tagDir}/{albumName}'.format(albumName=albumName,tagDir=tagDir)
-        newAlbumDir = '{tagDir}/{albumName}-{albumId}'.format(albumName=albumName,tagDir=tagDir,albumId=albumId)
-        originDir = '{}/{albumName}'.format(imagesDir,albumName=albumName)
-        logging.info('dir:%s',dir)
-        logging.info('originDir:%s',originDir)
-        if(os.path.exists(originDir)):
-            logging.info('origin dir is exist!')
-            dirFileCount = getFilesCountOfDir(originDir)
-            logging.info('origin dir file count:%s',dirFileCount)
-            if(dirFileCount >= count):
-                # 文件夹拷贝到tag目录中
-                # 先将dest中的文件夹删除
-                shutil.rmtree(dir,ignore_errors=True)
-                shutil.move(originDir,dir)
-                logging.info('move file from origin dir to new dir')
-                return
-        if(os.path.exists(dir)):
-            logging.info('dir is not exist.try to make dir %s',dir)
-            os.rename(dir,newAlbumDir)
-        if not os.path.exists(newAlbumDir):
-            os.mkdir(newAlbumDir)
-            logging.warning('***dir:%s is exist.***',dir)
-        dir = newAlbumDir    
+        albumName  = '{title}-{figure}-{count}'.format(title=title,figure=figure,count=count,encoding='utf-8')
+        dir = '{tagDir}/{albumName}-{albumId}'.format(albumName=albumName,tagDir=tagDir,albumId=albumId)
+        logging.debug('dir:%s',dir)
+        if not os.path.exists(dir):
+            os.mkdir(dir)
+        else:
+            logging.warning("dir:%s already exists",dir)
         dirFileCount = getFilesCountOfDir(dir)
         if(dirFileCount >= count):
             return
@@ -173,17 +170,16 @@ def extractAlbum(album,tagDir):
         logging.error(error)
         return
     # 下载图片
-    # 图片地址，https://lns.hywly.com/a/1/34927/4.jpg
-    # https://lns.hywly.com/a/1/34927/4.jpg
     for i in range(int(count)):
         r = re.search(r'id=(?P<id>\d+)',url)
         id = r.groupdict()['id']
-        imageUrl = 'https://lns.hywly.com/a/1/{id}/{i}.jpg'.format(id = id, i = i)
+        imageUrl = '{imageBaseUrl}/a/1/{id}/{i}.jpg'.format(imageBaseUrl=imageBaseUrl,id = id, i = i)
         try:
             downloadImage(imageUrl,'{title}-{figure}-{count}.jpg'.format(figure=figure,title=title,count=i),dir)
         except Exception as e:
             logging.error(e)   
             continue       
+
 def downloadImage(url,filename,dir):
     '''下载图片.
     从url下载图片到指定目录dir中，并保存图片名称为filename
@@ -194,13 +190,13 @@ def downloadImage(url,filename,dir):
 
     dir: 下载图片到某个目录 
     '''
-    logging.info('>>>downloadImage:{url}'.format(url=url))
+    logging.debug('downloadImage:{url}'.format(url=url))
     filename = os.path.join(dir,filename)
     if(os.path.exists(filename)):
-        logging.info("!!!image>>>%s is exist.",filename)
+        logging.warning("image:%s is exist.",filename)
         return
     res = requests.get(url,headers=imageHeaders,verify=False)
-    with open(filename,'wb',encoding='utf-8') as f:
+    with open(filename,'wb') as f:
         f.write(res.content)
 
 def getFilesCountOfDir(dir,level = 1):
@@ -209,8 +205,8 @@ def getFilesCountOfDir(dir,level = 1):
     dir: 目录
     level: 目录层级
     '''
-    logging.info('=============getFilesCountOfDir==========')
-    logging.info('dir:%s;level:%s',dir,level)
+    logging.debug('=============getFilesCountOfDir==========')
+    logging.debug('dir:%s;level:%s',dir,level)
     if not (os.path.isdir(dir)):
         logging.warning('dir:%s is not a directory!',dir)
         return 0
